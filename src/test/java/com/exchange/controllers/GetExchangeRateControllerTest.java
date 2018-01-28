@@ -15,7 +15,11 @@ import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDate;
+import java.util.Collections;
+import java.util.Map;
+import java.util.stream.Collectors;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.never;
@@ -62,7 +66,56 @@ public class GetExchangeRateControllerTest {
     }
 
     @Test
-    public void noExchangeRate() throws Exception {
+    public void getAllExchangeRates() throws Exception {
+        //Given
+        String originCurr = "USD";
+        Map<String, Float> rates = ImmutableMap.of("PEN", 1.0f, "GBP", 2.0f);
+        ExchangeRateResponse expectedResponse = new ExchangeRateResponse(originCurr, LocalDate.now().toString(), rates);
 
+        //When
+        when(exchangeRateRepository.findByOrigin(originCurr))
+                .thenReturn(rates.entrySet().stream()
+                    .map(er -> new ExchangeRate(originCurr, er.getKey(), er.getValue()))
+                    .collect(Collectors.toList()));
+        //Then
+        mockMvc.perform(get(buildURL(originCurr, ""))).andExpect(status().isOk())
+                .andExpect(content().json(OBJECT_MAPPER.writeValueAsString(expectedResponse)));
+        verify(exchangeRateRepository, never()).findByOriginAndDestination(anyString(), anyString());
+        verify(exchangeRateRepository).findByOrigin(eq(originCurr));
     }
+
+    @Test
+    public void noExchangeRate() throws Exception {
+        //Given
+        String originCurr = "PEN";
+        String destinationCurr = "USD";
+
+        //When
+        when(exchangeRateRepository.findByOriginAndDestination(originCurr, destinationCurr))
+                .thenReturn(null);
+
+        //Then
+        mockMvc.perform(get(buildURL(originCurr, destinationCurr))).andExpect(status().isNotFound())
+                .andExpect(content().string(containsString("Exchange rate from PEN to USD not found")));
+        verify(exchangeRateRepository).findByOriginAndDestination(eq(originCurr), eq(destinationCurr));
+        verify(exchangeRateRepository, never()).findByOrigin(anyString());
+    }
+
+    @Test
+    public void noExchangeRates() throws Exception {
+        //Given
+        String originCurr = "PEN";
+
+        //When
+        when(exchangeRateRepository.findByOrigin(originCurr))
+                .thenReturn(null);
+
+        //Then
+        mockMvc.perform(get(buildURL(originCurr, ""))).andExpect(status().isNotFound())
+                .andExpect(content().string(containsString("Exchange rates for PEN not found")));
+        verify(exchangeRateRepository, never()).findByOriginAndDestination(anyString(), anyString());
+        verify(exchangeRateRepository).findByOrigin(originCurr);
+    }
+
+
 }
